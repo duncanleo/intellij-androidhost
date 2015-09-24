@@ -11,6 +11,7 @@ import java.awt.event.*;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class AVDChooser extends JDialog {
@@ -19,6 +20,7 @@ public class AVDChooser extends JDialog {
     private JButton buttonCancel;
     private JList listAVD;
     private JLabel labelStatus;
+    private List<AVD> devices;
 
     public AVDChooser() {
         setContentPane(contentPane);
@@ -70,15 +72,19 @@ public class AVDChooser extends JDialog {
                 while ((line = rd.readLine()) != null) {
                     result.append(line);
                 }
-                AVD[] avbDevices = new Gson().fromJson(result.toString(), AVD[].class);
-                for (AVD avd : avbDevices) {
-//                        items.add(String.format("<html><font color=green>%s</font></html>", ad.getId()));
-                    items.add(avd.getName());
+                AVD[] avdDevices = new Gson().fromJson(result.toString(), AVD[].class);
+                devices = Arrays.asList(avdDevices);
+                for (AVD avd : avdDevices) {
+                    String html = "<html>";
+                    html += String.format("%s %s<br>", avd.getManufacturer(), avd.getDevice());
+                    html += String.format("%s %s<br>", avd.getTarget(), avd.getArch());
+                    html += "</html>";
+                    items.add(html);
                 }
                 SwingUtilities.invokeLater(() -> {
                     listAVD.setListData(items.toArray());
                     labelStatus.setText("Loaded");
-                    if (items.size() > 0) {
+                    if (devices.size() > 0) {
                         listAVD.setSelectedIndex(0);
                     }
                 });
@@ -93,7 +99,7 @@ public class AVDChooser extends JDialog {
         if (listAVD.getSelectedIndex() == -1) {
             return;
         }
-        String avdName = listAVD.getSelectedValue().toString();
+        String avdName = devices.get(listAVD.getSelectedIndex()).getName();
         new Thread(() -> {
             org.apache.http.client.HttpClient client = HttpClientBuilder.create().build();
             HttpGet request = new HttpGet(Deploy.URL + "/start?name=" + avdName);

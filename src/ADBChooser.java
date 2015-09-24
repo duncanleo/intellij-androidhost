@@ -62,9 +62,9 @@ public class ADBChooser extends JDialog {
             public void actionPerformed(ActionEvent e) {
                 AVDChooser avdChooser = new AVDChooser();
                 avdChooser.setTitle("Start AVD");
+                avdChooser.pack();
                 avdChooser.setSize(500, 400);
                 avdChooser.setLocationRelativeTo(null);
-                avdChooser.pack();
                 avdChooser.setVisible(true);
             }
         });
