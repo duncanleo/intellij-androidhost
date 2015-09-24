@@ -20,6 +20,7 @@ import java.io.File;
 import java.io.InputStreamReader;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class ADBChooser extends JDialog {
@@ -29,8 +30,9 @@ public class ADBChooser extends JDialog {
     private JButton buttonStartAVD;
     private JList listADB;
     private JLabel labelStatus;
+    private JButton buttonRefresh;
     private VirtualFile projectDir;
-    private String URL = "http://localhost:8000";
+    private List<ADBDevice> devices;
 
     public ADBChooser(DataContext context) {
         setContentPane(contentPane);
@@ -55,9 +57,34 @@ public class ADBChooser extends JDialog {
             }
         });
 
+        buttonStartAVD.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                AVDChooser avdChooser = new AVDChooser();
+                avdChooser.setTitle("Start AVD");
+                avdChooser.setSize(500, 400);
+                avdChooser.setLocationRelativeTo(null);
+                avdChooser.pack();
+                avdChooser.setVisible(true);
+            }
+        });
+
+        buttonRefresh.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                loadData();
+            }
+        });
+
 // call onCancel() when cross is clicked
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
         addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowGainedFocus(WindowEvent e) {
+                super.windowGainedFocus(e);
+                loadData();
+            }
+
             public void windowClosing(WindowEvent e) {
                 onCancel();
             }
@@ -73,10 +100,15 @@ public class ADBChooser extends JDialog {
         listADB.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         listADB.setLayoutOrientation(JList.VERTICAL);
 
-        Thread thread = new Thread(() -> {
+        loadData();
+
+    }
+
+    private void loadData() {
+        new Thread(() -> {
             //Get data
             HttpClient client = HttpClientBuilder.create().build();
-            HttpGet request = new HttpGet(URL + "/listadb");
+            HttpGet request = new HttpGet(Deploy.URL + "/listadb");
             request.addHeader("User-Agent", "IntelliJ-AndroidHost-Plugin");
 
             final List<String> items = new ArrayList<>();
@@ -92,27 +124,34 @@ public class ADBChooser extends JDialog {
                     result.append(line);
                 }
                 ADBDevice[] adbDevices = new Gson().fromJson(result.toString(), ADBDevice[].class);
+                devices = Arrays.asList(adbDevices);
                 for (ADBDevice ad : adbDevices) {
-//                        items.add(String.format("<html><font color=green>%s</font></html>", ad.getId()));
-                    items.add(ad.getId());
+                    String html = "<html>";
+                    html += String.format("%s<br>", ad.getId());
+                    html += String.format("%s<br>", ad.getStatus());
+                    html += String.format("%s<br>", ad.getProperties());
+                    html += "</html>";
+
+                    items.add(html);
                 }
                 SwingUtilities.invokeLater(() -> {
                     listADB.setListData(items.toArray());
                     labelStatus.setText("Loaded");
-                    if (items.size() > 0) {
+                    if (devices.size() > 0) {
                         listADB.setSelectedIndex(0);
                     }
                 });
             } catch (Exception e) {
-                e.printStackTrace();
+                labelStatus.setText("Error: " + e.getMessage());
             }
-        });
-        thread.start();
-
+        }).start();
     }
 
     private void onOK() {
 // add your code here
+        if (listADB.getSelectedIndex() == -1) {
+            return;
+        }
         //TODO: Invert condition
         if (projectDir != null) {
             String path = Paths.get(projectDir.getPath(), "app", "build", "outputs", "apk").toString();
@@ -121,7 +160,7 @@ public class ADBChooser extends JDialog {
                 new Thread(() -> {
                     try {
                         HttpClient client = HttpClientBuilder.create().build();
-                        HttpPost post = new HttpPost(URL + "/install?name=" + listADB.getSelectedValue());
+                        HttpPost post = new HttpPost(Deploy.URL + "/install?name=" + devices.get(listADB.getSelectedIndex()).getId());
                         MultipartEntityBuilder builder = MultipartEntityBuilder.create();
                         builder.addBinaryBody("file", debugAPK, ContentType.APPLICATION_OCTET_STREAM, "file.apk");
 
@@ -138,7 +177,7 @@ public class ADBChooser extends JDialog {
                         post.setEntity(new ProgressHttpEntityWrapper(multipart, progressCallback));
                         client.execute(post);
                     } catch (Exception e) {
-                        e.printStackTrace();
+                        labelStatus.setText("Error: " + e.getMessage());
                     }
                 }).start();
             } else {
