@@ -22,6 +22,8 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 public class ADBChooser extends JDialog {
     private JPanel contentPane;
@@ -33,6 +35,7 @@ public class ADBChooser extends JDialog {
     private JButton buttonRefresh;
     private VirtualFile projectDir;
     private List<ADBDevice> devices;
+    private ScheduledThreadPoolExecutor poolExecutor = new ScheduledThreadPoolExecutor(2);
 
     public ADBChooser(DataContext context) {
         setContentPane(contentPane);
@@ -97,7 +100,7 @@ public class ADBChooser extends JDialog {
             }
         }, KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
 
-        listADB.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        listADB.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         listADB.setLayoutOrientation(JList.VERTICAL);
 
         loadData();
@@ -157,29 +160,32 @@ public class ADBChooser extends JDialog {
             String path = Paths.get(projectDir.getPath(), "app", "build", "outputs", "apk").toString();
             File debugAPK = new File(path, "app-debug.apk");
             if (debugAPK.exists()) {
-                new Thread(() -> {
-                    try {
-                        HttpClient client = HttpClientBuilder.create().build();
-                        HttpPost post = new HttpPost(Deploy.URL + "/install?name=" + devices.get(listADB.getSelectedIndex()).getId());
-                        MultipartEntityBuilder builder = MultipartEntityBuilder.create();
-                        builder.addBinaryBody("file", debugAPK, ContentType.APPLICATION_OCTET_STREAM, "file.apk");
+                for (int i : listADB.getSelectedIndices()) {
+                    poolExecutor.schedule(() -> {
+                        try {
+                            HttpClient client = HttpClientBuilder.create().build();
+                            String id = devices.get(i).getId();
+                            HttpPost post = new HttpPost(Deploy.URL + "/install?name=" + id);
+                            MultipartEntityBuilder builder = MultipartEntityBuilder.create();
+                            builder.addBinaryBody("file", debugAPK, ContentType.APPLICATION_OCTET_STREAM, "file.apk");
 
-                        HttpEntity multipart = builder.build();
+                            HttpEntity multipart = builder.build();
 
-                        ProgressHttpEntityWrapper.ProgressCallback progressCallback = progress -> {
-                            //Use the progress
-                            SwingUtilities.invokeLater(() -> labelStatus.setText(String.format("Uploading, %.2f%% complete...", progress)));
-                            if (progress == 100.0f) {
-                                dispose();
-                            }
-                        };
+                            ProgressHttpEntityWrapper.ProgressCallback progressCallback = progress -> {
+                                //Use the progress
+                                SwingUtilities.invokeLater(() -> labelStatus.setText(String.format("Uploading to '%s', %.2f%% complete...", id, progress)));
+                                if (i + 1 == listADB.getSelectedIndices().length && progress == 100.0f) {
+                                    dispose();
+                                }
+                            };
 
-                        post.setEntity(new ProgressHttpEntityWrapper(multipart, progressCallback));
-                        client.execute(post);
-                    } catch (Exception e) {
-                        labelStatus.setText("Error: " + e.getMessage());
-                    }
-                }).start();
+                            post.setEntity(new ProgressHttpEntityWrapper(multipart, progressCallback));
+                            client.execute(post);
+                        } catch (Exception e) {
+                            labelStatus.setText("Error: " + e.getMessage());
+                        }
+                    }, 100, TimeUnit.MILLISECONDS);
+                }
             } else {
                 JOptionPane.showMessageDialog(null, String.format("Debug apk could not be found in '%s'", debugAPK.getAbsolutePath()));
             }
