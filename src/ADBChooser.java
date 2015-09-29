@@ -1,9 +1,9 @@
 import com.google.gson.Gson;
 import com.intellij.openapi.actionSystem.DataConstants;
-import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import model.ADBDevice;
+import model.APK;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
@@ -14,11 +14,15 @@ import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.impl.client.HttpClientBuilder;
 
 import javax.swing.*;
-import java.awt.event.*;
+import java.awt.event.KeyEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStreamReader;
-import java.nio.file.Paths;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -33,51 +37,37 @@ public class ADBChooser extends JDialog {
     private JList listADB;
     private JLabel labelStatus;
     private JButton buttonRefresh;
+    private JComboBox comboBoxAPK;
     private VirtualFile projectDir;
     private List<ADBDevice> devices;
+    private List<APK> apkList = new ArrayList<>();
     private ScheduledThreadPoolExecutor poolExecutor = new ScheduledThreadPoolExecutor(2);
 
-    public ADBChooser(DataContext context) {
+    public ADBChooser() {
         setContentPane(contentPane);
         setModal(true);
         getRootPane().setDefaultButton(buttonOK);
 
         try {
-            projectDir = ((Project)context.getData(DataConstants.PROJECT)).getBaseDir();
+            projectDir = ((Project)Deploy.dataContext.getData(DataConstants.PROJECT)).getBaseDir();
         } catch (Exception e) {
             e.printStackTrace();
         }
 
-        buttonOK.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                onOK();
-            }
+        buttonOK.addActionListener(e -> onOK());
+
+        buttonCancel.addActionListener(e -> onCancel());
+
+        buttonStartAVD.addActionListener(e -> {
+            AVDChooser avdChooser = new AVDChooser();
+            avdChooser.setTitle("Start AVD");
+            avdChooser.pack();
+            avdChooser.setSize(500, 400);
+            avdChooser.setLocationRelativeTo(null);
+            avdChooser.setVisible(true);
         });
 
-        buttonCancel.addActionListener(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                onCancel();
-            }
-        });
-
-        buttonStartAVD.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                AVDChooser avdChooser = new AVDChooser();
-                avdChooser.setTitle("Start AVD");
-                avdChooser.pack();
-                avdChooser.setSize(500, 400);
-                avdChooser.setLocationRelativeTo(null);
-                avdChooser.setVisible(true);
-            }
-        });
-
-        buttonRefresh.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                loadData();
-            }
-        });
+        buttonRefresh.addActionListener(e -> loadData());
 
 // call onCancel() when cross is clicked
         setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
@@ -94,17 +84,36 @@ public class ADBChooser extends JDialog {
         });
 
 // call onCancel() on ESCAPE
-        contentPane.registerKeyboardAction(new ActionListener() {
-            public void actionPerformed(ActionEvent e) {
-                onCancel();
-            }
-        }, KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
+        contentPane.registerKeyboardAction(e -> onCancel(), KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT);
 
         listADB.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         listADB.setLayoutOrientation(JList.VERTICAL);
 
+        loadAPK();
         loadData();
 
+    }
+
+    private void loadAPK() {
+        apkList.clear();
+        try {
+            Files.walkFileTree(Paths.get(projectDir.getPath()), new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    if (file.getFileName().toString().endsWith("apk")) {
+                        SwingUtilities.invokeLater(() -> {
+                            APK a = new APK(file.toAbsolutePath().toString());
+                            apkList.add(a);
+                            comboBoxAPK.addItem(a);
+                        });
+                    }
+                    return super.visitFile(file, attrs);
+                }
+            });
+        } catch (Exception e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(null, "Error walking file tree: " + e.getMessage());
+        }
     }
 
     private void loadData() {
@@ -157,9 +166,9 @@ public class ADBChooser extends JDialog {
         }
         //TODO: Invert condition
         if (projectDir != null) {
-            String path = Paths.get(projectDir.getPath(), "app", "build", "outputs", "apk").toString();
-            File debugAPK = new File(path, "app-debug.apk");
-            if (debugAPK.exists()) {
+            APK apk = apkList.get(comboBoxAPK.getSelectedIndex());
+            File apkFile = new File(apk.getPath());
+            if (apkFile.exists()) {
                 for (int i : listADB.getSelectedIndices()) {
                     poolExecutor.schedule(() -> {
                         try {
@@ -167,7 +176,7 @@ public class ADBChooser extends JDialog {
                             String id = devices.get(i).getId();
                             HttpPost post = new HttpPost(Deploy.URL + "/install?name=" + id);
                             MultipartEntityBuilder builder = MultipartEntityBuilder.create();
-                            builder.addBinaryBody("file", debugAPK, ContentType.APPLICATION_OCTET_STREAM, "file.apk");
+                            builder.addBinaryBody("file", apkFile, ContentType.APPLICATION_OCTET_STREAM, "file.apk");
 
                             HttpEntity multipart = builder.build();
 
@@ -187,7 +196,7 @@ public class ADBChooser extends JDialog {
                     }, 100, TimeUnit.MILLISECONDS);
                 }
             } else {
-                JOptionPane.showMessageDialog(null, String.format("Debug apk could not be found in '%s'", debugAPK.getAbsolutePath()));
+                JOptionPane.showMessageDialog(null, String.format("Debug apk could not be found in '%s'.\nHave you built a debug APK yet?", apkFile.getAbsolutePath()));
             }
         } else {
             JOptionPane.showMessageDialog(null, "Project directory could not be obtained, deployment cancelled.");
