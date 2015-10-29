@@ -1,6 +1,6 @@
 <idea-plugin version="2">
-  <id>com.yourcompany.unique.plugin.id</id>
-  <name>Plugin display name here</name>
+  <id>me.duncanleo.intellij.androidhost</id>
+  <name>IntelliJ-Android Host</name>
   <version>1.0</version>
   <vendor email="duncanleo97@gmail.com" url="http://duncanleo.me">Duncan Leo</vendor>
 
