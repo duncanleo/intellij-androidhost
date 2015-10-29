@@ -2,16 +2,14 @@
   <id>com.yourcompany.unique.plugin.id</id>
   <name>Plugin display name here</name>
   <version>1.0</version>
-  <vendor email="support@yourcompany.com" url="http://www.yourcompany.com">YourCompany</vendor>
+  <vendor email="duncanleo97@gmail.com" url="http://duncanleo.me">Duncan Leo</vendor>
 
   <description><![CDATA[
-      Enter short description for your plugin here.<br>
-      <em>most HTML tags may be used</em>
+      IDE plugin for <b>Android Host</b>
     ]]></description>
 
   <change-notes><![CDATA[
-      Add change notes here.<br>
-      <em>most HTML tags may be used</em>
+      Initial version
     ]]>
   </change-notes>
 
