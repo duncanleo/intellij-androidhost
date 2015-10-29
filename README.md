@@ -1,5 +1,5 @@
 ## intellij-androidhost
-This is the client to Android Host. It provides a GUI that can be called up using a button in Android Studio.
+This is the client to Android Host. It provides a GUI that can be called up using a button in Android Studio. The server can be found [here](https://github.com/duncanleo/go-androidhost).
 
 ### What is Android Host?
 The Android Emulator is the most versatile emulator available - you can set any screen size, and run versions of Android such as Froyo (2.2) and Marshmallow (6.0). However, it's also the slowest, even with Intel HAXM acceleration.
